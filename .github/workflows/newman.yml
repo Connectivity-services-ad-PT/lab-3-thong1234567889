@@ -2,52 +2,49 @@ name: Newman Contract Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  newman:
+  contract-tests:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
+    - name: Install dependencies
+      run: npm install
 
-      - name: Lint OpenAPI contracts
-        run: npm run lint:contracts
+    - name: Install Prism Mock Server globally
+      run: npm install -g @stoplight/prism-cli
 
-      - name: Start Prism mock servers
-        run: |
-          nohup npm run mock:iot > prism-iot.log 2>&1 &
-          nohup npm run mock:vision > prism-vision.log 2>&1 &
+    - name: Start Access Gate Mock Server
+      run: npm run mock:iot &
+      # Dấu & giúp chạy ngầm Mock Server trên cổng 4010
 
-      # CHỈ CHECK CỔNG 4010 CÓ /HEALTH, CỔNG 4011 THÌ NGỦ ĐỢI 3 GIÂY CHO CHẮC CHẮN
-      - name: Wait for mock servers
-        run: |
-          npx wait-on http://localhost:4010/health --timeout 15000
-          sleep 3
+    - name: Start AI Vision Mock Server
+      run: npm run mock:vision &
+      # Dấu & giúp chạy ngầm Mock Server trên cổng 4011
 
-      - name: Run Newman contract tests
-        run: npm run test:mock
+    - name: Wait for Mock Servers to be ready
+      run: |
+        sleep 5
+        curl --silent --fail http://localhost:4010/health || exit 1
 
-      - name: Show Prism logs on failure
-        if: failure()
-        run: |
-          cat prism-iot.log || true
-          cat prism-vision.log || true
+    - name: Run Contract Tests
+      run: npm run test:mock
 
-      - name: Upload Newman reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: newman-reports
-          path: reports/
+    - name: Upload Test Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: newman-reports
+        path: reports/
