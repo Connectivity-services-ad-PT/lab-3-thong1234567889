@@ -1,0 +1,7 @@
+| VARIABLE        | INITIAL VALUE                                  | CURRENT VALUE                                  |
+| --------------- | ---------------------------------------------- | ---------------------------------------------- |
+| env             | mock                                           | mock                                           |
+| baseUrl         | [http://127.0.0.1:4010](http://127.0.0.1:4010) | [http://127.0.0.1:4010](http://127.0.0.1:4010) |
+| authToken       | lab-token                                      | lab-token                                      |
+| teamName        | team-gate                                      | team-gate                                      |
+| aiVisionMockUrl | [http://127.0.0.1:4011](http://127.0.0.1:4011) | [http://127.0.0.1:4011](http://127.0.0.1:4011) |

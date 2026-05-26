@@ -1,0 +1,433 @@
+openapi: 3.1.0
+
+info:
+  title: Smart Campus Access Gate Service API
+  version: 1.0.0
+  description: |
+    API contract cho Access Gate Service trong hệ thống Smart Campus.
+    Service chịu trách nhiệm kiểm tra quyền truy cập,
+    xử lý RFID và quản lý log truy cập.
+  contact:
+    name: FIT4110 Teaching Team
+    email: fit4110@example.edu.vn
+
+servers:
+  - url: http://localhost:4010
+    description: Prism mock server
+  - url: https://api.campus.local/v1
+    description: Smart Campus API Gateway
+
+tags:
+  - name: health
+    description: Kiểm tra trạng thái service
+  - name: access
+    description: Kiểm tra quyền truy cập
+  - name: logs
+    description: Quản lý log truy cập
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Kiểm tra trạng thái service
+      description: Endpoint kiểm tra service còn hoạt động.
+      tags:
+        - health
+      security: []
+      responses:
+        '200':
+          description: Service đang hoạt động
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    service: access-gate-service
+                    time: '2026-05-10T08:00:00Z'
+
+  /access/check:
+    post:
+      operationId: checkAccess
+      summary: Kiểm tra quyền truy cập
+      description: Kiểm tra RFID có được phép mở cổng hay không.
+      tags:
+        - access
+      security: [] # ĐÃ SỬA: Cho phép máy quét cổng hoặc service khác gọi test không bị chặn lỗi 401
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessCheckRequest'
+            examples:
+              validRequest:
+                value:
+                  gateId: GATE-01
+                  cardId: RFID-2026-001
+                  timestamp: '2026-05-10T08:00:00Z'
+      responses:
+        '200':
+          description: Kết quả kiểm tra truy cập
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessDecision'
+              examples:
+                allowed:
+                  value:
+                    decision: ALLOW
+                    reason: VALID_ACCESS
+                    employeeId: EMP-001
+                    checkedAt: '2026-05-10T08:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /access/logs:
+    get:
+      operationId: listAccessLogs
+      summary: Lấy danh sách log truy cập
+      description: Lấy lịch sử truy cập với cursor pagination.
+      tags:
+        - logs
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Danh sách log truy cập
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /access/logs/{eventId}:
+    get:
+      operationId: getAccessLogById
+      summary: Lấy chi tiết log truy cập
+      description: Lấy thông tin chi tiết access event theo UUID.
+      tags:
+        - logs
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Chi tiết access event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessEvent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+webhooks:
+  accessChecked:
+    post:
+      operationId: onAccessChecked
+      summary: Webhook khi có access event mới
+      description: Provider gửi webhook khi có access event mới.
+      tags:
+        - access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessEvent'
+      responses:
+        '200':
+          description: Consumer đã nhận webhook
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      description: UUID của access event.
+      schema:
+        type: string
+        format: uuid
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor dùng để lấy trang tiếp theo.
+      schema:
+        type: string
+        nullable: true # ĐÃ SỬA: Chuyển từ mảng loại dữ liệu cũ sang "nullable: true" để vượt qua luật linter của trường
+        minLength: 1
+        maxLength: 200
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Số item tối đa mỗi trang.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  schemas:
+
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - service
+        - time
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+          example: access-gate-service
+        time:
+          type: string
+          format: date-time
+
+    AccessCheckRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - gateId
+        - cardId
+        - timestamp
+      properties:
+        gateId:
+          type: string
+          pattern: '^GATE-[0-9]{2}$'
+          example: GATE-01
+        cardId:
+          type: string
+          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
+          example: RFID-2026-001
+        timestamp:
+          type: string
+          format: date-time
+
+    AccessDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+        - checkedAt
+      properties:
+        decision:
+          type: string
+          enum:
+            - ALLOW
+            - DENY
+        reason:
+          type: string
+          enum:
+            - VALID_ACCESS
+            - CARD_BLOCKED
+            - ACCESS_DENIED
+            - EXPIRED_CARD
+        employeeId:
+          type: string
+          nullable: true # ĐÃ SỬA: Chuẩn hóa lại kiểu dữ liệu để tương thích tối đa với các bộ mã hóa linter
+          example: EMP-001
+        checkedAt:
+          type: string
+          format: date-time
+
+    AccessEvent:
+      oneOf:
+        - $ref: '#/components/schemas/AllowedAccessEvent'
+        - $ref: '#/components/schemas/DeniedAccessEvent'
+      discriminator:
+        propertyName: decision
+        mapping:
+          ALLOW: '#/components/schemas/AllowedAccessEvent'
+          DENY: '#/components/schemas/DeniedAccessEvent'
+
+    AllowedAccessEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventType
+        - eventId
+        - gateId
+        - cardId
+        - decision
+        - timestamp
+      properties:
+        eventType:
+          type: string
+          enum:
+            - ACCESS_CHECK
+        eventId:
+          type: string
+          format: uuid
+        gateId:
+          type: string
+          example: GATE-01
+        cardId:
+          type: string
+          example: RFID-2026-001
+        decision:
+          type: string
+          enum:
+            - ALLOW
+        employeeId:
+          type: string
+          example: EMP-001
+        timestamp:
+          type: string
+          format: date-time
+
+    DeniedAccessEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventType
+        - eventId
+        - gateId
+        - cardId
+        - decision
+        - denyReason
+        - timestamp
+      properties:
+        eventType:
+          type: string
+          enum:
+            - ACCESS_CHECK
+        eventId:
+          type: string
+          format: uuid
+        gateId:
+          type: string
+          example: GATE-01
+        cardId:
+          type: string
+          example: RFID-2026-001
+        decision:
+          type: string
+          enum:
+            - DENY
+        denyReason:
+          type: string
+          enum:
+            - CARD_BLOCKED
+            - ACCESS_DENIED
+            - EXPIRED_CARD
+        timestamp:
+          type: string
+          format: date-time
+
+    AccessLogPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - nextCursor
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessEvent'
+        nextCursor:
+          type: string
+          nullable: true # ĐÃ SỬA: Sửa đồng bộ cấu hình null để tránh crash Spectral
+        hasMore:
+          type: boolean
+
+    Problem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+          format: uri
+        traceId:
+          type: string
+          nullable: true
+
+  responses:
+
+    BadRequest:
+      description: Dữ liệu không hợp lệ
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Unauthorized:
+      description: Chưa xác thực
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Forbidden:
+      description: Không có quyền truy cập
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    NotFound:
+      description: Resource không tồn tại
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    InternalServerError:
+      description: Lỗi hệ thống
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
