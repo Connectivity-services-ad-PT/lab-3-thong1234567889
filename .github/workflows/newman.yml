@@ -30,8 +30,11 @@ jobs:
           nohup npm run mock:iot > prism-iot.log 2>&1 &
           nohup npm run mock:vision > prism-vision.log 2>&1 &
 
+      # CHỈ CHECK CỔNG 4010 CÓ /HEALTH, CỔNG 4011 THÌ NGỦ ĐỢI 3 GIÂY CHO CHẮC CHẮN
       - name: Wait for mock servers
-        run: npx wait-on http://localhost:4010/health http://localhost:4011/health --timeout 30000
+        run: |
+          npx wait-on http://localhost:4010/health --timeout 15000
+          sleep 3
 
       - name: Run Newman contract tests
         run: npm run test:mock
